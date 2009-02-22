@@ -1,14 +1,14 @@
 <?php
 /**
- * Plugin Google Maps: Allow Display of a OpenStreetMap in a wiki page.
+ * Plugin OpenStreetMap: Allow Display of a OpenStreetMap in a wiki page.
  * 
  * @license    GPL 2 (http://www.gnu.org/licenses/gpl.html)
  * @author     Michael Hamann <michael@content-space.de>
  * @author     Christopher Smith <chris@jalakai.co.uk>
  */
 
-if(!defined('DOKU_INC')) define('DOKU_INC',realpath(dirname(__FILE__).'/../../').'/');
-if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
+if(!defined('DOKU_INC')) define('DOKU_INC', realpath(dirname(__FILE__).'/../../').'/');
+if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN', DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
 
 /**
@@ -16,24 +16,6 @@ require_once(DOKU_PLUGIN.'syntax.php');
  * need to inherit from this class
  */
 class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
-
-  var $options = array(
-    'width' => '450',
-    'height' => '320',
-    'lat'  => -4.25,
-    'lon' => 55.833,
-    'zoom' => 8,
-    'format' => 'jpeg',
-    'layer' => 'mapnik',
-  );
-
-  var $mappings = array(
-    'zoom' => 'z',
-    'width' => 'w',
-    'height' => 'h',
-    'lon' => 'long'
-  );
-
   function getInfo(){
     return array(
       'author' => 'Michael Hamann, Christopher Smith',
@@ -41,7 +23,7 @@ class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
       'date'   => '2008-11-10',
       'name'   => 'OpenStreetMap Plugin',
       'desc'   => 'Add maps to your wiki
-      Syntax: <osm params>overlaypoints</osm>',
+      Syntax: <osm params>markers</osm>',
       'url'    => 'http://www.dokuwiki.org/plugin:osm',
     );
   }
@@ -51,152 +33,257 @@ class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
   function getSort() { return 900; } 
 
   function connectTo($mode) { 
-    $this->Lexer->addSpecialPattern('<osm ?[^>\n]*>.*?</osm>',$mode,'plugin_osm'); 
+    $this->Lexer->addSpecialPattern('<osm ?[^>\n]*>.*?</osm>', $mode, 'plugin_osm'); 
   }
 
-  function handle($match, $state, $pos, &$handler){
+  function handle($match, $state, $pos, &$handler) {
 
     // break matched cdata into its components
-    list($str_params,$str_points) = explode('>',substr($match,4,-6),2);
+    list($str_params, $str_markers) = explode('>', substr($match, 4, -6), 2);
 
-    $options = $this->_extract_params($str_params);
-    $overlay = $this->_extract_points($str_points);
+    $map = new OSM_Map();
 
-    // determine width and height (inline styles) for the map image
-    if ($options['width'] || $options['height']) {
-      $style = $options['width'] ? 'width: '.$options['width']."px;" : "";
-      $style .= $options['height'] ? 'height: '.$options['height']."px;" : "";
-      $style = "style='$style'";
-    } else {
-      $style = '';
-    }      
+    $param = array();
+    preg_match_all('/(\w*)="(.*?)"/us', $str_params, $param, PREG_SET_ORDER);
 
-    // create the query string
-    $query_params = array();
-    foreach ($options as $key => $val) {
-      $val = is_numeric($val) ? $val : hsc($val);
-      $query_params[$key] = $val;
-      $query_params[] = (array_key_exists($key, $this->mappings) ? $this->mappings[$key] : $key).'='.$val;
+    foreach($param as $kvpair) {
+      list($match, $key, $val) = $kvpair;
+      $key = strtolower($key);
+      $setter = 'set'.ucfirst($key);
+      if (method_exists($map, $setter)) $map->$setter(strtolower($val));        
     }
 
-    $query_string = implode('&', $query_params);
+    $map->setMarkers($this->_extract_markers($str_markers));
 
-    // create a javascript serialisation of the point data
-    $points = '';
-    if (!empty($overlay)) {
-      foreach ($overlay as $data) {
-        list($lat,$lon,$text) = $data;
-        $points .= ",{lat:$lat,lon:$lon,txt:'$text'}";
-      }
-      $points = "[ ".substr($points,1)." ]";
-    }
-
-    return array($style, $options, $query_string, $points);
+    return array($map);
   }
 
   function render($mode, &$renderer, $data) {
     if ($mode == 'xhtml') {
-      list($style, $options, $query_string, $points) = $data;
+      list($map) = $data;
 
-      $renderer->doc .= '<div class="openstreetmap" '.$style.'>'.DOKU_LF;
-      $link_query = array();
-      foreach ($options as $key=>$val) {
-        if ($key != 'format')
-          $link_query[] = "$key=$val";
-      }
-      $renderer->doc .= "<a href=\"http://www.openstreetmap.org/?".implode('&amp;',$link_query)."\" title=\"See this map on OpenStreetMap.org\">".DOKU_LF;
-      $renderer->doc .= "<img alt=\"OpenStreetMap\" src=\"".ml(hsc($this->getConf('map_service_url'))."?".$query_string, array('cache' => 'recache'))."\" />".DOKU_LF;
+      $renderer->doc .= '<div class="openstreetmap" style="'.$map->getSizeCSS().'">'.DOKU_LF;
+      $renderer->doc .= "<a href=\"".$map->getLinkURL()."\" title=\"See this map on OpenStreetMap.org\">".DOKU_LF;
+      $renderer->doc .= "<img alt=\"OpenStreetMap\" src=\"".$map->getImageURL($this->getConf('map_service_url'))."\" />".DOKU_LF;
       $renderer->doc .= "</a>".DOKU_LF;
-      $renderer->doc .= "<!-- ".$points." -->";
+      $renderer->doc .= "<!-- ".$map->toJSON()." -->";
       $renderer->doc .= "</div>".DOKU_LF;
 
-      }
-
-      return false;
-    } 
-
-    /**
-     * extract parameters for the openstreetmap from the parameter string
-     *
-     * @param   string    $str_params   string of key="value" pairs
-     * @return  array                   associative array of parameters key=>value
-     */
-    function _extract_params($str_params) {
-
-      $param = array();
-      preg_match_all('/(\w*)="(.*?)"/us',$str_params,$param,PREG_SET_ORDER);
-
-      // parse match for instructions, break into key value pairs      
-      $options = $this->options;
-      foreach($param as $kvpair) {
-        list($match,$key,$val) = $kvpair;
-        $key = strtolower($key);
-        if (isset($options[$key])) $options[$key] = strtolower($val);        
-      }
-
-      if ($options['zoom']) {
-        $options['zoom'] = (int)$options['zoom'];
-        if ($options['zoom'] > 18 || $options['zoom'] < 0) {
-          $options['zoom'] = $this->options['zoom'];
-        }
-      }
-
-      if ($options['width']) {
-        $options['width'] = (int)$options['width'];
-        if ($options['width'] > 1000 || $options['width'] < 100) {
-          $options['width'] = $this->options['width'];
-        }
-      }
-
-      if ($options['height']) {
-        $options['height'] = (int)$options['height'];
-        if ($options['height'] > 1000 || $options['height'] < 100) {
-          $options['height'] = $this->options['height'];
-        }
-      }
-
-      if ($options['lat']) {
-        $options['lat'] = (float)$options['lat'];
-        if ($options['lat'] > 90 || $options['lat'] < -90) {
-          $options['lat'] = $this->options['lat'];
-        }
-      }
-
-      if ($options['lon']) {
-        $options['lon'] = (float)$options['lon'];
-        if ($options['lon'] > 180 || $options['lon'] < -180) {
-          $options['lon'] = $this->options['lon'];
-        }
-      }
-
-      return $options;
     }
 
-    /**
-     * extract overlay points for the googlemap from the wiki syntax data
-     *
-     * @param   string    $str_points   multi-line string of lat,lon,text triplets
-     * @return  array                   multi-dimensional array of lat,lon,text triplets
-     */
-    function _extract_points($str_points) {
+    return false;
+  } 
 
-      $point = array();
-      preg_match_all('/^(.*?),(.*?),(.*)$/um',$str_points,$point,PREG_SET_ORDER);
+  /**
+   * extract markers for the osm from the wiki syntax data
+   *
+   * @param   string    $str_markers   multi-line string of lat,lon,text triplets
+   * @return  array                   array of OSM_Markers
+   */
+  function _extract_markers($str_markers) {
 
-      $overlay = array();
-      foreach ($point as $pt) {
-        list($match,$lat,$lon,$text) = $pt;
+    $point = array();
+    preg_match_all('/^(.*?),(.*?),(.*)$/um', $str_markers, $point, PREG_SET_ORDER);
 
-        $lat = is_numeric($lat) ? $lat : 0;
-        $lon = is_numeric($lon) ? $lon : 0;
-        $text = addslashes(str_replace("\n","",p_render("xhtml",p_get_instructions($text),$info)));
+    $overlay = array();
+    foreach ($point as $pt) {
+      list($match, $lat, $lon, $text) = $pt;
 
-        $overlay[] = array($lat,$lon,$text);
-      }
+      $lat = is_numeric($lat) ? $lat : 0;
+      $lon = is_numeric($lon) ? $lon : 0;
+      $text = addslashes(str_replace("\n", "", p_render("xhtml", p_get_instructions($text), $info)));
 
-      return $overlay;
+      $overlay[] = new OSM_Marker($lat, $lon, $text);
     }
+
+    return $overlay;
+  }
 
 }
 
+/**
+ * An OpenStreetMap.
+ */
+class OSM_Map {
+  var $options = array('width', 'height', 'lat', 'lon', 'zoom', 'layer');
+  var $mappings = array(
+    'zoom' => 'z',
+    'width' => 'w',
+    'height' => 'h',
+    'lon' => 'long'
+  );
+  var $layers = array('osmarender', 'maplint', 'mapnik');
+  var $width = 450;
+  var $height = 320;
+  var $lat  = -4.25;
+  var $lon = 55.833;
+  var $zoom = 8;
+  var $layer = 'mapnik';
+  var $markers = array();
 
+  /**
+   * Set the width of the map.
+   *
+   * @param string|int $width The width.
+   */
+  function setWidth($width) {
+    $width = (int) $width;
+    if ($width < 1000 && $width > 100) {
+      $this->width = $width;
+    }
+  }
+
+  /**
+   * Set the height of the map.
+   *
+   * @param string|int $height The height.
+   */
+  function setHeight($height) {
+    $height = (int) $height;
+    if ($height < 1500 && $height > 99) {
+      $this->height = $height;
+    }
+  }
+
+  /**
+   * Set the zoom level of the map.
+   *
+   * @param string|int $zoom The zoom level.
+   */
+  function setZoom($zoom) {
+    $zoom = (int) $zoom;
+    if ($zoom <= 18 && $zoom >= 0) {
+      $this->zoom = $zoom;
+    }
+  }
+
+  /**
+   * Set the latitude of the center of the map.
+   *
+   * @param string|float $lat The latitude to set.
+   */
+  function setLat($lat) {
+    $lat = (float) $lat;
+    if ($lat <= 90 && $lat >= -90) {
+      $this->lat = $lat;
+    }
+  }
+
+  /**
+   * Set the longitude of the center of the map.
+   *
+   * @param string|float $lon The longitude to set.
+   */
+  function setLon($lon) {
+    $lon = (float) $lon;
+    if ($lon <= 180 && $lon >= -180) {
+      $this->lon = $lon;
+    }
+  }
+
+  /**
+   * Set the default layer of the map.
+   *
+   * @param string The default layer.
+   */
+  function setLayer($layer) {
+    if (in_array($layer, $this->layers)) {
+      $this->layer = $layer;
+    }
+  }
+
+  /**
+   * Generates the image URL for the map using the given mapserver.
+   *
+   * @param string $mapServiceURL The mapping service url.
+   * @return string The URL to the static image of this map.
+   */
+  function getImageURL($mapServiceURL) {
+    // create the query string
+    $query_params = array('format=jpeg');
+    foreach ($this->options as $option) {
+      $query_params[] = (array_key_exists($option, $this->mappings) ? $this->mappings[$option] : $option).'='.$this->$option;
+    }
+
+    return ml(hsc($mapServiceURL)."?".implode('&', $query_params), array('cache' => 'recache'));
+  }
+
+  /**
+   * Generates the link url for this map.
+   *
+   * @return string The link url.
+   */
+  function getLinkURL() {
+    $link_query = array();
+
+    foreach ($this->options as $option) {
+      $link_query[] = "$option={$this->$option}";
+    }
+    return 'http://www.openstreetmap.org/?'.implode('&amp;', $link_query);
+  }
+
+  /**
+   * Generate CSS code for the size of the image.
+   *
+   * @return string The css for the size of the image.
+   */
+  function getSizeCSS() {
+    // determine width and height (inline styles) for the map image
+    return 'width: '.$this->width.'px; height: '.$this->height.'px;';
+  }
+
+  /**
+   * Sets the markers.
+   *
+   * @param markers The new markers.
+   */
+  function setMarkers($markers) {
+    $this->markers = $markers;
+  }
+
+  /**
+   * Generates a JSON representation of the map.
+   *
+   * @return string The JSON representation of the map.
+   */
+  function toJSON() {
+    $json = '';
+    foreach ($this->markers as $marker) {
+      $json .= ',';
+      $json .= $marker->toJSON();
+    }
+
+    return '['.substr($json, 1).']';
+  }
+}
+
+/**
+ * Represents a marker on a map with a description text.
+ */
+class OSM_Marker {
+  var $lat;
+  var $lon;
+  var $text;
+
+  /**
+   * A marker on the OSM.
+   *
+   * @param int $lat The latitude.
+   * @param int $lon The longitude.
+   * @param string $text The text of the bubble.
+   */
+  function OSM_Marker($lat, $lon, $text) {
+    $this->lat = $lat;
+    $this->lon = $lon;
+    $this->text = $text;
+  }
+
+  /**
+   * Generate a JSON representation of the marker.
+   *
+   * @return string The JSON representation of the marker.
+   */
+  function toJSON() {
+    return "{lat:$this->lat,lon:$this->lon,txt:'$this->text'}";
+  }
+}
