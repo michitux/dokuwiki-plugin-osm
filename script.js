@@ -21,7 +21,6 @@ addInitEvent(function () {
 
     var layers = new Object();
     layers['osmarender'] = new OpenLayers.Layer.OSM.Osmarender("Osmarender");
-    layers['maplint'] = new OpenLayers.Layer.OSM.Maplint("Maplint");
     layers['mapnik'] = new OpenLayers.Layer.OSM.Mapnik("Mapnik");
 
     if (!layers[params['layer']]) {
@@ -34,6 +33,8 @@ addInitEvent(function () {
         map.addLayer(layers[layer]);
       }
     }
+
+    map.addLayer(new OpenLayers.Layer.OSM.Maplint("Maplint"));
 
     var layerMarkers = new OpenLayers.Layer.Markers("Markers");
     map.addLayer(layerMarkers);

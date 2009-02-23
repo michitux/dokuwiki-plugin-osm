@@ -112,7 +112,7 @@ class OSM_Map {
     'height' => 'h',
     'lon' => 'long'
   );
-  var $layers = array('osmarender', 'maplint', 'mapnik');
+  var $layers = array('osmarender', 'mapnik');
   var $width = 450;
   var $height = 320;
   var $lat  = -4.25;
