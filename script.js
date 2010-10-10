@@ -34,8 +34,6 @@ addInitEvent(function () {
       }
     }
 
-    map.addLayer(new OpenLayers.Layer.OSM.Maplint("Maplint"));
-
     var layerMarkers = new OpenLayers.Layer.Markers("Markers");
     map.addLayer(layerMarkers);
 
