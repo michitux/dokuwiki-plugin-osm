@@ -16,18 +16,6 @@ require_once(DOKU_PLUGIN.'syntax.php');
  * need to inherit from this class
  */
 class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
-  function getInfo(){
-    return array(
-      'author' => 'Michael Hamann, Christopher Smith',
-      'email'  => 'michael@content-space.de',
-      'date'   => '2008-11-10',
-      'name'   => 'OpenStreetMap Plugin',
-      'desc'   => 'Add maps to your wiki
-      Syntax: <osm params>markers</osm>',
-      'url'    => 'http://www.dokuwiki.org/plugin:osm',
-    );
-  }
-
   function getType() { return 'substition'; }
   function getPType() { return 'block'; }
   function getSort() { return 900; } 

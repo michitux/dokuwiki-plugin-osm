@@ -1,0 +1,7 @@
+base   osm
+author Michael Hamann
+email  michael@content-space.de
+date   2010-11-04
+name   OpenStreetMap Plugin
+desc   Add OpenStreetMap maps to your wiki. Syntax: <osm params>markers</osm>'
+url    http://www.dokuwiki.org/plugin:osm
