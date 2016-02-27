@@ -53,7 +53,7 @@ class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
         $this->Lexer->addSpecialPattern('<osm ?[^>\n]*>.*?</osm>', $mode, 'plugin_osm');
     }
 
-    function handle($match, $state, $pos, &$handler) {
+    function handle($match, $state, $pos, Doku_Handler $handler) {
 
         // break matched cdata into its components
         list($str_params, $str_markers) = explode('>', substr($match, 4, -6), 2);
@@ -92,7 +92,7 @@ class syntax_plugin_osm extends DokuWiki_Syntax_Plugin {
         return array($opts, $markers);
     }
 
-    function render($mode, &$renderer, $data) {
+    function render($mode, Doku_Renderer $renderer, $data) {
         if ($mode == 'xhtml') {
             list($options, $markers) = $data;
 
